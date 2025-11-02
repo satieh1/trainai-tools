@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Dict
+from uuid import uuid4
 
 app = FastAPI(title="Train.ai Tool API")
 
@@ -33,16 +34,19 @@ class Flow(BaseModel):
     app: str
     task: str
     confidence: float
-    sources: List[dict]
+    sources: List[Dict]
     steps: List[FlowStep]
-    fallbacks: dict
+    fallbacks: Dict
     role: List[str]
     prerequisites: List[str]
+
+# ---------- IN-MEMORY STORE ----------
+FLOWS: Dict[str, Dict] = {}  # id -> flow dict
 
 # ---------- ENDPOINTS ----------
 @app.get("/")
 def home():
-    return {"message": "Train.ai tool API running", "docs": "/api/docs", "openapi": "/api/openapi.json"}
+    return {"message": "Train.ai tool API running", "docs": "/openapi.json", "flows": "/flows"}
 
 @app.post("/crawl", response_model=CrawlResult)
 def crawl(url: str, depth: int = 1):
@@ -80,5 +84,23 @@ def evaluate(selector: str, route: Optional[str] = None):
 
 @app.post("/persist_flow")
 def persist_flow(flow: Flow):
-    # For MVP, just echo OK; later save to a DB (Supabase/Postgres)
-    return {"status": "ok", "id": "flow_001", "task": flow.task}
+    flow_id = str(uuid4())[:8]
+    data = flow.model_dump()
+    data["id"] = flow_id
+    FLOWS[flow_id] = data
+    return {"status": "ok", "id": flow_id, "task": flow.task}
+
+# ---- NEW ADMIN ENDPOINTS ----
+@app.get("/flows")
+def list_flows():
+    # Light summary list
+    return [
+        {"id": fid, "app": f["app"], "task": f["task"], "confidence": f["confidence"]}
+        for fid, f in FLOWS.items()
+    ]
+
+@app.get("/flows/{flow_id}")
+def get_flow(flow_id: str):
+    if flow_id not in FLOWS:
+        return {"error": "not found"}
+    return FLOWS[flow_id]
