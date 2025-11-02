@@ -13,9 +13,12 @@ SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 app = FastAPI(title="Train.ai Tool API")
-
-# ---- Templates ----
 templates = Jinja2Templates(directory="templates")
+
+# ---- Helper ----
+def _get_flow(flow_id: str):
+    res = supabase.table("flows").select("*").eq("id", flow_id).execute()
+    return (res.data or [None])[0]
 
 # ---------- MODELS ----------
 class CrawlResult(BaseModel):
@@ -55,7 +58,7 @@ class Flow(BaseModel):
 # ---------- ENDPOINTS ----------
 @app.get("/")
 def home():
-    return {"message": "Train.ai tool API running", "openapi": "/openapi.json", "flows": "/flows", "dashboard": "/dashboard"}
+    return {"message": "Train.ai tool API running", "dashboard": "/dashboard"}
 
 @app.get("/dashboard", response_class=HTMLResponse)
 def dashboard(request: Request):
@@ -63,38 +66,35 @@ def dashboard(request: Request):
     rows = res.data or []
     return templates.TemplateResponse("flows.html", {"request": request, "flows": rows})
 
+@app.get("/dashboard/{flow_id}", response_class=HTMLResponse)
+def dashboard_detail(request: Request, flow_id: str):
+    flow = _get_flow(flow_id)
+    if not flow:
+        return templates.TemplateResponse(
+            "flow_detail.html",
+            {"request": request, "flow": {"id": flow_id, "task": "not found", "confidence": 0}},
+        )
+    return templates.TemplateResponse("flow_detail.html", {"request": request, "flow": flow})
+
 @app.post("/crawl", response_model=CrawlResult)
 def crawl(url: str, depth: int = 1):
-    # MOCK response
     return CrawlResult(
         url=url,
         routes=["/projects/ABC/issues", "/secure/CreateIssue!default.jspa"],
-        selectors=[
-            "button:has-text('Create')",
-            "input[name='summary']",
-            "textarea[name='description']"
-        ],
+        selectors=["button:has-text('Create')", "input[name='summary']", "textarea[name='description']"],
         snippets=["Create", "Epic", "Summary", "Description"],
         screenshots=[]
     )
 
 @app.get("/doc_search", response_model=DocSearchResponse)
 def doc_search(query: str):
-    # MOCK doc result
-    return DocSearchResponse(results=[
-        DocChunk(
-            ref="pdf://jira_guide#p12",
-            text="To create an Epic, click Create, choose Epic, and enter Summary..."
-        )
-    ])
+    return DocSearchResponse(
+        results=[DocChunk(ref="pdf://jira_guide#p12", text="To create an Epic, click Create, choose Epic, and enter Summary...")]
+    )
 
 @app.get("/evaluate", response_model=EvaluateResponse)
 def evaluate(selector: str, route: Optional[str] = None):
-    ok = selector in [
-        "button:has-text('Create')",
-        "input[name='summary']",
-        "textarea[name='description']"
-    ]
+    ok = selector in ["button:has-text('Create')", "input[name='summary']", "textarea[name='description']"]
     return EvaluateResponse(valid=ok, notes="mock evaluation")
 
 @app.post("/persist_flow")
