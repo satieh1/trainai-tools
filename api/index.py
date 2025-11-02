@@ -1,7 +1,14 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
 from typing import List, Optional, Dict
+from supabase import create_client, Client
+import os
 from uuid import uuid4
+
+# ---- Supabase setup ----
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 app = FastAPI(title="Train.ai Tool API")
 
@@ -26,7 +33,7 @@ class EvaluateResponse(BaseModel):
 
 class FlowStep(BaseModel):
     selector: str
-    action: str  # "click" | "type" | "select"
+    action: str
     value: Optional[str] = None
     assert_: Optional[str] = None
 
@@ -40,9 +47,6 @@ class Flow(BaseModel):
     role: List[str]
     prerequisites: List[str]
 
-# ---------- IN-MEMORY STORE ----------
-FLOWS: Dict[str, Dict] = {}  # id -> flow dict
-
 # ---------- ENDPOINTS ----------
 @app.get("/")
 def home():
@@ -50,7 +54,6 @@ def home():
 
 @app.post("/crawl", response_model=CrawlResult)
 def crawl(url: str, depth: int = 1):
-    # MOCK response for Jira "Create Epic"
     return CrawlResult(
         url=url,
         routes=["/projects/ABC/issues", "/secure/CreateIssue!default.jspa"],
@@ -65,7 +68,6 @@ def crawl(url: str, depth: int = 1):
 
 @app.get("/doc_search", response_model=DocSearchResponse)
 def doc_search(query: str):
-    # MOCK doc result
     return DocSearchResponse(results=[
         DocChunk(
             ref="pdf://jira_guide#p12",
@@ -87,20 +89,17 @@ def persist_flow(flow: Flow):
     flow_id = str(uuid4())[:8]
     data = flow.model_dump()
     data["id"] = flow_id
-    FLOWS[flow_id] = data
+    supabase.table("flows").insert(data).execute()
     return {"status": "ok", "id": flow_id, "task": flow.task}
 
-# ---- NEW ADMIN ENDPOINTS ----
 @app.get("/flows")
 def list_flows():
-    # Light summary list
-    return [
-        {"id": fid, "app": f["app"], "task": f["task"], "confidence": f["confidence"]}
-        for fid, f in FLOWS.items()
-    ]
+    res = supabase.table("flows").select("id, app, task, confidence").execute()
+    return res.data or []
 
 @app.get("/flows/{flow_id}")
 def get_flow(flow_id: str):
-    if flow_id not in FLOWS:
+    res = supabase.table("flows").select("*").eq("id", flow_id).execute()
+    if not res.data:
         return {"error": "not found"}
-    return FLOWS[flow_id]
+    return res.data[0]
