@@ -1,5 +1,10 @@
+from fastapi.responses import HTMLResponse, RedirectResponse
+
+@app.get("/")
+def home():
+    return RedirectResponse("/dashboard")
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, RedirectResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 from typing import List, Optional, Dict
@@ -58,7 +63,7 @@ class Flow(BaseModel):
 # ---------- ENDPOINTS ----------
 @app.get("/")
 def home():
-    return {"message": "Train.ai tool API running", "dashboard": "/dashboard"}
+    return RedirectResponse("/dashboard")
 
 @app.get("/dashboard", response_class=HTMLResponse)
 def dashboard(request: Request):
