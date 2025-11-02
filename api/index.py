@@ -1,4 +1,6 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 from typing import List, Optional, Dict
 from supabase import create_client, Client
@@ -11,6 +13,9 @@ SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 app = FastAPI(title="Train.ai Tool API")
+
+# ---- Templates ----
+templates = Jinja2Templates(directory="templates")
 
 # ---------- MODELS ----------
 class CrawlResult(BaseModel):
@@ -50,10 +55,17 @@ class Flow(BaseModel):
 # ---------- ENDPOINTS ----------
 @app.get("/")
 def home():
-    return {"message": "Train.ai tool API running", "docs": "/openapi.json", "flows": "/flows"}
+    return {"message": "Train.ai tool API running", "openapi": "/openapi.json", "flows": "/flows", "dashboard": "/dashboard"}
+
+@app.get("/dashboard", response_class=HTMLResponse)
+def dashboard(request: Request):
+    res = supabase.table("flows").select("id, app, task, confidence").order("created_at", desc=True).execute()
+    rows = res.data or []
+    return templates.TemplateResponse("flows.html", {"request": request, "flows": rows})
 
 @app.post("/crawl", response_model=CrawlResult)
 def crawl(url: str, depth: int = 1):
+    # MOCK response
     return CrawlResult(
         url=url,
         routes=["/projects/ABC/issues", "/secure/CreateIssue!default.jspa"],
@@ -68,6 +80,7 @@ def crawl(url: str, depth: int = 1):
 
 @app.get("/doc_search", response_model=DocSearchResponse)
 def doc_search(query: str):
+    # MOCK doc result
     return DocSearchResponse(results=[
         DocChunk(
             ref="pdf://jira_guide#p12",
@@ -94,7 +107,7 @@ def persist_flow(flow: Flow):
 
 @app.get("/flows")
 def list_flows():
-    res = supabase.table("flows").select("id, app, task, confidence").execute()
+    res = supabase.table("flows").select("id, app, task, confidence").order("created_at", desc=True).execute()
     return res.data or []
 
 @app.get("/flows/{flow_id}")
