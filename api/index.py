@@ -86,7 +86,7 @@ def evaluate(selector: str, route: Optional[str] = None):
 
 @app.post("/persist_flow")
 def persist_flow(flow: Flow):
-    flow_id = str(uuid4())[:8]
+    flow_id = str(uuid4())
     data = flow.model_dump()
     data["id"] = flow_id
     supabase.table("flows").insert(data).execute()
