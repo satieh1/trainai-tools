@@ -1,0 +1,55 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Train.ai — Flow {{ flow.id }}</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; margin: 24px; }
+    a { color:#0969da; text-decoration:none; } a:hover{ text-decoration:underline; }
+    h1 { margin-bottom:6px; }
+    .meta { color:#666; margin-bottom:18px; }
+    pre { background:#f6f8fa; padding:14px; border-radius:8px; overflow:auto; }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    table { border-collapse: collapse; width: 100%; margin-top: 12px;}
+    th, td { padding: 10px 12px; border-bottom: 1px solid #eee; text-align: left; }
+    .pill { display:inline-block; background:#eef; padding:2px 8px; border-radius:999px; margin-right:6px;}
+  </style>
+</head>
+<body>
+  <p><a href="/dashboard">← Back to flows</a></p>
+  <h1>{{ flow.task }}</h1>
+  <div class="meta">
+    <span class="pill">{{ flow.app }}</span>
+    <span class="pill">confidence: {{ '%.2f'|format(flow.confidence|float) }}</span>
+    <span class="pill">{{ flow.id }}</span>
+  </div>
+
+  <h3>Sources</h3>
+  <ul>
+    {% for s in flow.sources %}
+      <li><code>{{ s.type }}</code> — <a href="{{ s.ref }}" target="_blank" rel="noopener">{{ s.ref }}</a></li>
+    {% else %}
+      <li>No sources</li>
+    {% endfor %}
+  </ul>
+
+  <h3>Steps</h3>
+  <table>
+    <thead><tr><th>#</th><th>Action</th><th>Selector</th><th>Value</th><th>Assert</th></tr></thead>
+    <tbody>
+      {% for st in flow.steps %}
+      <tr>
+        <td>{{ loop.index }}</td>
+        <td><code>{{ st.action }}</code></td>
+        <td><code>{{ st.selector }}</code></td>
+        <td>{{ st.value or '' }}</td>
+        <td>{{ st.assert_ or '' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <h3>JSON</h3>
+  <pre><code>{{ flow | tojson(indent=2) }}</code></pre>
+</body>
+</html>
