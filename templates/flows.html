@@ -23,7 +23,7 @@
     <tbody>
     {% for f in flows %}
       <tr>
-        <td><a href="/flows/{{ f.id }}">{{ f.task }}</a></td>
+        <td><a href="/dashboard/{{ f.id }}">{{ f.task }}</a></td>
         <td>{{ f.app }}</td>
         <td>{{ '%.2f'|format(f.confidence|float) }}</td>
         <td class="id">{{ f.id }}</td>
