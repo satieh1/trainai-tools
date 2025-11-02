@@ -1,10 +1,5 @@
-from fastapi.responses import HTMLResponse, RedirectResponse
-
-@app.get("/")
-def home():
-    return RedirectResponse("/dashboard")
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, RedirectResponse, RedirectResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 from typing import List, Optional, Dict
@@ -15,14 +10,24 @@ from uuid import uuid4
 # ---- Supabase setup ----
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+if not SUPABASE_URL or not SUPABASE_KEY:
+    # Allow app to boot (so Render deploy passes) even if env vars aren't set;
+    # endpoints that use Supabase will 500 if misconfigured.
+    supabase = None
+else:
+    supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 app = FastAPI(title="Train.ai Tool API")
 templates = Jinja2Templates(directory="templates")
 
 # ---- Helper ----
+def supa():
+    if supabase is None:
+        raise RuntimeError("Supabase not configured (check SUPABASE_URL / SUPABASE_SERVICE_KEY)")
+    return supabase
+
 def _get_flow(flow_id: str):
-    res = supabase.table("flows").select("*").eq("id", flow_id).execute()
+    res = supa().table("flows").select("*").eq("id", flow_id).execute()
     return (res.data or [None])[0]
 
 # ---------- MODELS ----------
@@ -60,27 +65,32 @@ class Flow(BaseModel):
     role: List[str]
     prerequisites: List[str]
 
-# ---------- ENDPOINTS ----------
+# ---------- ROUTES ----------
 @app.get("/")
 def home():
     return RedirectResponse("/dashboard")
 
 @app.get("/dashboard", response_class=HTMLResponse)
 def dashboard(request: Request):
-    res = supabase.table("flows").select("id, app, task, confidence").order("created_at", desc=True).execute()
-    rows = res.data or []
+    try:
+        res = supa().table("flows").select("id, app, task, confidence").order("created_at", desc=True).execute()
+        rows = res.data or []
+    except Exception as e:
+        rows = []
     return templates.TemplateResponse("flows.html", {"request": request, "flows": rows})
 
 @app.get("/dashboard/{flow_id}", response_class=HTMLResponse)
 def dashboard_detail(request: Request, flow_id: str):
-    flow = _get_flow(flow_id)
+    flow = None
+    try:
+        flow = _get_flow(flow_id)
+    except Exception:
+        pass
     if not flow:
-        return templates.TemplateResponse(
-            "flow_detail.html",
-            {"request": request, "flow": {"id": flow_id, "task": "not found", "confidence": 0}},
-        )
+        flow = {"id": flow_id, "task": "not found", "confidence": 0, "sources": [], "steps": []}
     return templates.TemplateResponse("flow_detail.html", {"request": request, "flow": flow})
 
+# ---- tool endpoints (mocked for MVP) ----
 @app.post("/crawl", response_model=CrawlResult)
 def crawl(url: str, depth: int = 1):
     return CrawlResult(
@@ -93,9 +103,9 @@ def crawl(url: str, depth: int = 1):
 
 @app.get("/doc_search", response_model=DocSearchResponse)
 def doc_search(query: str):
-    return DocSearchResponse(
-        results=[DocChunk(ref="pdf://jira_guide#p12", text="To create an Epic, click Create, choose Epic, and enter Summary...")]
-    )
+    return DocSearchResponse(results=[
+        DocChunk(ref="pdf://jira_guide#p12", text="To create an Epic, click Create, choose Epic, and enter Summary...")
+    ])
 
 @app.get("/evaluate", response_model=EvaluateResponse)
 def evaluate(selector: str, route: Optional[str] = None):
@@ -107,17 +117,17 @@ def persist_flow(flow: Flow):
     flow_id = str(uuid4())
     data = flow.model_dump()
     data["id"] = flow_id
-    supabase.table("flows").insert(data).execute()
+    supa().table("flows").insert(data).execute()
     return {"status": "ok", "id": flow_id, "task": flow.task}
 
 @app.get("/flows")
 def list_flows():
-    res = supabase.table("flows").select("id, app, task, confidence").order("created_at", desc=True).execute()
+    res = supa().table("flows").select("id, app, task, confidence").order("created_at", desc=True).execute()
     return res.data or []
 
 @app.get("/flows/{flow_id}")
 def get_flow(flow_id: str):
-    res = supabase.table("flows").select("*").eq("id", flow_id).execute()
+    res = supa().table("flows").select("*").eq("id", flow_id).execute()
     if not res.data:
         return {"error": "not found"}
     return res.data[0]
